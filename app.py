@@ -67,25 +67,37 @@ with num_col:
     if len(chosen_numeric) == 0:
         st.write("No numeric columns detected.")
     for col in chosen_numeric:
-        # special ranges requested by user
+        # determine min/max/value
         if col.lower() == 'area':
             col_min, col_max, col_mean = 1000.0, 15000.0, 5150.54
         elif col.lower() in ('bedrooms', 'bathrooms', 'stories', 'parking'):
-            col_min, col_max, col_mean = 0, 10, int(df[col].median()) if (not df.empty and col in df.columns) else 3
+            # integer inputs 0..10
+            col_min, col_max = 0, 10
+            if not df.empty and col in df.columns:
+                try:
+                    col_mean = int(df[col].median())
+                except Exception:
+                    col_mean = 3
+            else:
+                col_mean = 3
         elif not df.empty and col in df.columns:
             col_min = float(df[col].min())
             col_max = float(df[col].max())
             col_mean = float(df[col].mean())
         else:
             col_min, col_max, col_mean = 0.0, 100.0, 50.0
-        # choose integer sliders for the small integer features
+
+        # show the allowed range next to the input
+        st.write(f"{col}")
+        st.caption(f"range: {col_min} — {col_max}")
+
+        # integer inputs for small discrete features
         if col.lower() in ('bedrooms', 'bathrooms', 'stories', 'parking'):
-            val = st.slider(label=f"{col}", min_value=int(col_min), max_value=int(col_max), value=int(col_mean), step=1)
+            val = st.number_input(label=f"", min_value=int(col_min), max_value=int(col_max), value=int(col_mean), step=1, format="%d", key=f"num_{col}")
             inputs[col] = int(val)
         else:
-            # avoid zero step for floats
-            step = (col_max - col_min) / 100.0 if (float(col_max) - float(col_min)) > 0 else 0.01
-            val = st.slider(label=f"{col}", min_value=float(col_min), max_value=float(col_max), value=float(col_mean), step=step, format="%.3f")
+            # float inputs (area or other continuous)
+            val = st.number_input(label=f"", min_value=float(col_min), max_value=float(col_max), value=float(col_mean), step=(float(col_max)-float(col_min))/100.0 if float(col_max)>float(col_min) else 0.01, format="%.3f", key=f"num_{col}")
             inputs[col] = float(val)
 
 with cat_col:
