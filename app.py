@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
@@ -45,10 +45,8 @@ object_cols = df.select_dtypes(include=["object"]).columns.tolist() if not df.em
 
 st.sidebar.markdown("---")
 
-# Expose one input per column: number inputs for base numeric columns, selectboxes for categorical columns.
-# We will include engineered features in the model (if present or created) but not ask the user to input them.
-engineered_cols = ['bedroom_bathroom_ratio', 'area_2', 'area_centralized']
-
+# Expose one input per column: sliders for numeric columns, selectboxes for categorical columns.
+# If no dataset is present, fall back to a small example feature set.
 if not df.empty:
     # exclude the target column `price` from inputs so the app predicts it
     chosen_numeric = [c for c in numeric_cols if c.lower() != 'price']
@@ -57,9 +55,6 @@ else:
     # sensible defaults when no data is available
     chosen_numeric = ["area", "bedrooms", "bathrooms"]
     chosen_cat = []
-
-# UI numeric columns (don't show engineered columns to the user)
-ui_numeric = [c for c in chosen_numeric if c not in engineered_cols]
 
 # Collect inputs (one value per column)
 inputs = {}
@@ -71,7 +66,7 @@ with num_col:
     st.subheader("Continuous (sliders)")
     if len(chosen_numeric) == 0:
         st.write("No numeric columns detected.")
-    for col in ui_numeric:
+    for col in chosen_numeric:
         # determine min/max/value
         if col.lower() == 'area':
             col_min, col_max, col_mean = 1000.0, 15000.0, 5150.54
@@ -124,54 +119,23 @@ with cat_col:
 # Simple model: train a quick LinearRegression on chosen numeric features to predict `price` if available
 model = None
 trained = False
-model_feature_names = None
 if not df.empty and "price" in df.columns and len(chosen_numeric) > 0:
     try:
         X = df[chosen_numeric].copy()
         y = df["price"].copy()
-
-        # compute engineered features if they're not present
-        if 'bedroom_bathroom_ratio' not in X.columns and set(['bedrooms','bathrooms']).issubset(X.columns):
-            X['bedroom_bathroom_ratio'] = X.apply(lambda r: float(r['bedrooms']) / (r['bathrooms'] if r['bathrooms'] and r['bathrooms']!=0 else 1), axis=1)
-        if 'area_2' not in X.columns and 'area' in X.columns:
-            X['area_2'] = X['area'] ** 2
-        if 'area_centralized' not in X.columns and 'area' in X.columns:
-            mean_area = float(X['area'].mean()) if 'area' in X.columns else 0.0
-            X['area_centralized'] = X['area'] - mean_area
-
         model = LinearRegression()
         model.fit(X, y)
         trained = True
-        model_feature_names = X.columns.tolist()
     except Exception as e:
         st.warning(f"Could not train model from sample data: {e}")
 
 # Predict button (manual)
 def compute_prediction(inputs_dict):
-    # compute engineered features from base inputs
-    computed = inputs_dict.copy()
-    # bedroom_bathroom_ratio
-    try:
-        b = float(inputs_dict.get('bedrooms', 0))
-        ba = float(inputs_dict.get('bathrooms', 0))
-        computed['bedroom_bathroom_ratio'] = b / (ba if ba and ba != 0 else 1.0)
-    except Exception:
-        computed['bedroom_bathroom_ratio'] = 0.0
-    # area_2 and area_centralized
-    try:
-        area_val = float(inputs_dict.get('area', 0.0))
-        computed['area_2'] = area_val ** 2
-        mean_area = float(df['area'].mean()) if (not df.empty and 'area' in df.columns) else 0.0
-        computed['area_centralized'] = area_val - mean_area
-    except Exception:
-        computed['area_2'] = 0.0
-        computed['area_centralized'] = 0.0
-
-    if model is None or model_feature_names is None:
-        numeric_vals = np.array([computed.get(c, 0.0) for c in ui_numeric]) if len(ui_numeric) > 0 else np.array([0.0])
+    if model is None:
+        numeric_vals = np.array([inputs_dict.get(c, 0.0) for c in chosen_numeric]) if len(chosen_numeric) > 0 else np.array([0.0])
         return float(numeric_vals.sum())
     else:
-        X_new = np.array([computed.get(c, 0.0) for c in model_feature_names]).reshape(1, -1)
+        X_new = np.array([inputs_dict.get(c, 0.0) for c in chosen_numeric]).reshape(1, -1)
         return float(model.predict(X_new)[0])
 
 if st.button("Predict"):
